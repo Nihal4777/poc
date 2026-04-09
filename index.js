@@ -1,4 +1,4 @@
-import { generateAuthenticationOptions, generateRegistrationOptions, verifyRegistrationResponse } from "@simplewebauthn/server";
+import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from "@simplewebauthn/server";
 import express from "express";
 import crypto from "crypto";
 import { storeUser, getUserById, updateUser, updateOptionsForUser } from "./helper/storage.js";
@@ -97,6 +97,7 @@ app.post("/complete-registration", async (req, res) => {
     res.json({
         success: true,
         key,
+        id: user._id
     });
 
 });
@@ -109,6 +110,7 @@ app.post("/authenticate/options", async (req, res) => {
 
     const user = await getUserById(req.body.id)
 
+    console.log(user);
     const options = await generateAuthenticationOptions({
         // rpName: "localhost",
         rpID: "localhost",
@@ -130,6 +132,21 @@ app.post("/authenticate/verify", async (req, res) => {
     res.header("Access-Control-Allow-Origin", "http://localhost:3000");
 
     const user = await getUserById(req.body.id)
+    const currentOptions = user.options;
+    const passkey = user.passKey;
+    const verification = await verifyAuthenticationResponse({
+        response: req.body.credential,
+        expectedChallenge: currentOptions.challenge,
+        expectedOrigin: req.headers.origin,
+        expectedRPID: "localhost",
+        credential: {
+            id: passkey.id,
+            publicKey: passkey.publicKey,
+            counter: passkey.counter,
+            transports: passkey.transports,
+        },
+    });
+
 
     // const options = await generateAuthenticationOptions({
     //     // rpName: "localhost",
@@ -142,7 +159,7 @@ app.post("/authenticate/verify", async (req, res) => {
     // console.log(await updateOptionsForUser(user._id, options))
 
 
-    // res.json(options);
+    res.json(verification);
     //save this info
 
 });
