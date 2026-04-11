@@ -1,24 +1,27 @@
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from "@simplewebauthn/server";
 import express from "express";
 import crypto from "crypto";
-import { storeUser, getUserById, updateUser, updateOptionsForUser } from "./helper/storage.js";
+import { storeUser, getUserById, updateUser, updateOptionsForUser, updateCounterForUser } from "./helper/storage.js";
 import cors from "cors";
 import { generateAESKey } from "./helper/solana.js"
+import { configDotenv } from "dotenv";
 const app = express();
+
+configDotenv();
+const rpId = process.env.RP_ID
 
 // app.use()\\/
 app.use(cors())
 app.use(express.json());
 
 app.post("/get-started", async (req, res) => {
-    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
 
     const userID = crypto.randomBytes(16);
     const userName = "Account - 1";
     console.log(userID.toString('base64url'))
     const options = await generateRegistrationOptions({
         rpName: "localhost",
-        rpID: "localhost",
+        rpID: rpId,
         userID,
         userName: "Account - 1"
     });
@@ -35,7 +38,6 @@ app.post("/get-started", async (req, res) => {
 
 
 app.post("/complete-registration", async (req, res) => {
-    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
     res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
 
     const user = await getUserById(req.body.id)
@@ -44,7 +46,7 @@ app.post("/complete-registration", async (req, res) => {
         response: req.body.attestationResponse,
         expectedChallenge: user.options.challenge,
         expectedOrigin: req.headers.origin,
-        expectedRPID: "localhost",
+        expectedRPID: rpId,
     })
 
     if (!verificationJSON.verified) {
@@ -106,20 +108,19 @@ app.post("/complete-registration", async (req, res) => {
 
 
 app.post("/authenticate/options", async (req, res) => {
-    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
 
     const user = await getUserById(req.body.id)
 
     console.log(user);
     const options = await generateAuthenticationOptions({
-        // rpName: "localhost",
-        rpID: "localhost",
+        rpName: "localhost",
+        rpID: rpId,
         allowCredentials: [user.passKey].map(passkey => ({
             id: passkey.id,
             transports: passkey.transports,
         })),
     });
-    console.log(await updateOptionsForUser(user._id, options))
+    await updateOptionsForUser(user._id, options)
 
 
     res.json(options);
@@ -129,7 +130,6 @@ app.post("/authenticate/options", async (req, res) => {
 
 
 app.post("/authenticate/verify", async (req, res) => {
-    res.header("Access-Control-Allow-Origin", "http://localhost:3000");
 
     const user = await getUserById(req.body.id)
     const currentOptions = user.options;
@@ -138,31 +138,26 @@ app.post("/authenticate/verify", async (req, res) => {
         response: req.body.credential,
         expectedChallenge: currentOptions.challenge,
         expectedOrigin: req.headers.origin,
-        expectedRPID: "localhost",
+        expectedRPID: rpId,
         credential: {
             id: passkey.id,
-            publicKey: passkey.publicKey,
+            publicKey: new Uint8Array(passkey.publicKey.buffer),
             counter: passkey.counter,
             transports: passkey.transports,
         },
     });
+    const { authenticationInfo } = verification;
+    const { newCounter } = authenticationInfo;
+
+    await updateCounterForUser(user._id, newCounter)
 
 
-    // const options = await generateAuthenticationOptions({
-    //     // rpName: "localhost",
-    //     rpID: "localhost",
-    //     allowCredentials: [user.passKey].map(passkey => ({
-    //         id: passkey.id,
-    //         transports: passkey.transports,
-    //     })),
-    // });
-    // console.log(await updateOptionsForUser(user._id, options))
-
-
-    res.json(verification);
+    res.json({
+        verification,
+        key:user.key
+    });
     //save this info
-
 });
 
 
-app.listen(8000);
+app.listen(8000, "0.0.0.0");

@@ -3,9 +3,7 @@ import { configDotenv } from "dotenv";
 
 configDotenv();
 const url = process.env.MONGODB_URL
-console.log(url)
 const client = new MongoClient(url);
-
 const dbName = 'solana-wallet';
 
 export async function storeUser(user) {
@@ -62,5 +60,20 @@ export async function updateOptionsForUser(id, options) {
             options
         }
     });
+}
 
+export async function updateCounterForUser(id, counter) {
+
+    await client.connect();
+    const db = client.db(dbName);
+    const collection = db.collection('users');
+
+
+    return collection.updateOne({
+        _id: id
+    }, {
+        $set: {
+            "passKey.counter": counter
+        }
+    });
 }
